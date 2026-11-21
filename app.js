@@ -4,6 +4,28 @@ import { buildLetterText, buildPersonalLetter, formatDate, formatTime, resolvePl
 // 2) Paste it below. Every answer will then be emailed to you.
 const NOTIFY_KEY = "400accf0-3ec1-42a1-aad6-a0654e4057d1";
 
+// Where her finished answers get texted to your phone (01012712021).
+// Leave empty when the page is served by worker.js; on GitHub Pages put the
+// deployed relay URL here, e.g. "https://to-farida-sms.your-name.workers.dev".
+const SMS_RELAY_URL = "https://to-farida-sms-relay-no3ony.freebuff.site";
+const SMS_ENDPOINT = SMS_RELAY_URL
+  ? `${SMS_RELAY_URL.replace(/\/+$/, "")}/api/notify`
+  : "/api/notify";
+
+async function textAnswers(payload) {
+  try {
+    const response = await fetch(SMS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+    return response.ok;
+  } catch {
+    return false; // the letter still works and the email still goes out
+  }
+}
+
 async function notify(subject, message) {
   if (!NOTIFY_KEY || NOTIFY_KEY.startsWith("PASTE")) return;
   try {
@@ -196,6 +218,14 @@ $("#planForm").addEventListener("submit", async (event) => {
   setStep(4);
   generateLetter(details);
   submitButton.disabled = false;
+  textAnswers({
+    name: details.name,
+    date: formatDate(details.date),
+    time: formatTime(details.time),
+    plan: details.plan,
+    attempts: state.noAttempts,
+    letter: state.generatedLetter,
+  });
   notify("Her date details ♥", [
     "She picked the details:",
     "",
