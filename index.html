@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#32151f" />
+    <meta name="description" content="A tiny date invitation, made for one very specific person." />
+    <title>Date — A tiny invitation</title>
+    <link rel="icon" href="./assets/date-mark.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="wordmark" href="./" aria-label="Date home">
+        <span class="wordmark-mark" aria-hidden="true">♥</span>
+        <span>date</span>
+      </a>
+      <div class="header-note"><span class="status-dot"></span> one small yes</div>
+    </header>
+
+    <main class="app-shell">
+      <section class="progress-rail" aria-label="Invitation progress">
+        <div class="rail-line"><span id="railFill"></span></div>
+        <div class="progress-steps">
+          <span class="progress-step is-active" data-progress="1">01 / ask</span>
+          <span class="progress-step" data-progress="2">02 / yes</span>
+          <span class="progress-step" data-progress="3">03 / details</span>
+          <span class="progress-step" data-progress="4">04 / sent</span>
+        </div>
+      </section>
+
+      <section class="experience-card" aria-live="polite">
+        <div class="card-topline">
+          <span id="eyebrow">A NOTE FOR SOMEONE SPECIAL</span>
+          <span id="cardCounter">01</span>
+        </div>
+
+        <div id="stepAsk" class="step is-visible">
+          <div class="step-grid">
+            <div class="copy-block">
+              <p class="kicker">delivered with intention</p>
+              <h1>Meet me for a <em>date?</em></h1>
+              <p class="lede">A little time together, a favorite place, and a reason to look forward to the week.</p>
+
+              <div class="answer-area">
+                <p id="reactionText" class="reaction-text">Choose carefully. This one is worth dressing up for.</p>
+                <div id="actionZone" class="action-zone">
+                  <button id="yesButton" class="button button-primary" type="button">Yes, I'm in <span aria-hidden="true">↗</span></button>
+                  <button id="noButton" class="button button-ghost" type="button">Not tonight</button>
+                </div>
+              </div>
+              <p class="micro-note">No pressure. Just a little courage.</p>
+            </div>
+
+            <div class="postcard-art" aria-label="Illustration of a candlelit dinner for two" role="img">
+              <div class="postcard-stamp">DATE<br /><span>26</span></div>
+              <div class="date-card"><b>DATE</b><small>save the day</small></div>
+              <span class="heart heart-one" aria-hidden="true">♥</span>
+              <span class="heart heart-two" aria-hidden="true">♥</span>
+              <span class="heart heart-three" aria-hidden="true">♥</span>
+              <div class="table-cloth"></div>
+              <div class="plate plate-left"></div>
+              <div class="plate plate-right"></div>
+              <div class="glass glass-left"><span></span></div>
+              <div class="glass glass-right"><span></span></div>
+              <div class="candle"></div>
+              <div class="art-caption">save the moment<br /><b>somewhere between<br />now &amp; always</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="stepYay" class="step" hidden>
+          <div class="celebration-panel">
+            <div class="confetti" aria-hidden="true"></div>
+            <div class="yay-orbit"><span>♥</span><span>♥</span><span>♥</span></div>
+            <div class="yay-symbol" aria-hidden="true">✓</div>
+            <p class="kicker">excellent decision</p>
+            <h2>Okay, it's a <em>date.</em></h2>
+            <p class="lede narrow">See? You didn't need all that just to say yes. Now let's plan something nice.</p>
+            <button id="detailsButton" class="button button-primary" type="button">Choose the details <span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+
+        <div id="stepPlan" class="step" hidden>
+          <div class="plan-layout">
+            <div class="plan-intro">
+              <p class="kicker">make it official</p>
+              <h2>Pick the day,<br /><em>time &amp; mood.</em></h2>
+              <p class="lede">The little things make the memory. Choose what feels most like us.</p>
+              <div class="plan-aside"><span class="aside-line"></span><span>Nothing is set in stone.<br />Except maybe the reservation.</span></div>
+            </div>
+            <form id="planForm" class="plan-form">
+              <label class="field-label" for="guestName">A name for the envelope <span>optional</span></label>
+              <input id="guestName" class="text-input" type="text" maxlength="32" placeholder="e.g. Maya" autocomplete="off" />
+
+              <div class="field-row">
+                <label class="field-label" for="dateInput">Pick any date</label>
+                <input id="dateInput" class="date-input" type="date" value="2026-11-28" required />
+              </div>
+              <div class="field-row">
+                <label class="field-label" for="timeInput">Meet me at</label>
+                <input id="timeInput" class="time-input" type="time" value="20:15" step="60" required />
+              </div>
+
+              <fieldset class="plan-options">
+                <legend class="field-label">The plan, roughly</legend>
+                <div class="chip-grid">
+                  <button class="plan-chip is-selected" type="button" data-plan="a candlelit dinner">Candlelit dinner <span>♥</span></button>
+                  <button class="plan-chip" type="button" data-plan="coffee for two">Coffee for two <span>◒</span></button>
+                  <button class="plan-chip" type="button" data-plan="a tiny film">A tiny film <span>▣</span></button>
+                  <button class="plan-chip" type="button" data-plan="dessert walk">Dessert walk <span>◌</span></button>
+                </div>
+              </fieldset>
+
+              <div class="field-row custom-plan-row">
+                <label class="field-label" for="customPlan">Or write your own plan <span>optional</span></label>
+                <input id="customPlan" class="text-input" type="text" maxlength="80" placeholder="e.g. rooftop dinner and a long walk" autocomplete="off" />
+              </div>
+
+              <button class="button button-primary form-submit" type="submit">Seal the plan <span aria-hidden="true">↗</span></button>
+            </form>
+          </div>
+        </div>
+
+        <div id="stepLetter" class="step" hidden>
+          <div class="letter-layout">
+            <div class="letter-intro">
+              <p class="kicker">the note is ready</p>
+              <h2>One small letter<br /><em>for our date.</em></h2>
+              <p class="lede">Keep it somewhere you'll find it before we meet.</p>
+              <button id="editButton" class="text-button" type="button">← edit the details</button>
+            </div>
+            <article class="letter-card">
+              <div class="letter-head"><span>DATE / 01</span><span>private note</span></div>
+              <div class="letter-body">
+                <div id="aiStatus" class="ai-status" role="status">your message, translated and ready</div>
+                <p id="letterCopy" class="letter-copy">Your little letter will appear here after the details are sealed.</p>
+              </div>
+              <div class="letter-footer"><span>made for the two of us</span><span>♥</span></div>
+            </article>
+          </div>
+          <div class="share-row">
+            <button id="copyButton" class="button button-primary" type="button">Copy the letter <span aria-hidden="true">↗</span></button>
+            <button id="shareButton" class="button button-ghost" type="button">Share it</button>
+            <span id="copyStatus" class="copy-status" role="status"></span>
+          </div>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <span>made for one very specific date</span>
+        <span class="footer-star" aria-hidden="true">♥</span>
+        <span id="footerHint">tap yes to continue</span>
+      </footer>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
