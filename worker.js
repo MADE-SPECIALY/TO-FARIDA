@@ -74,8 +74,13 @@ function json(data, status, headers = {}) {
   });
 }
 
+// SMS Misr rejects a whole message when it contains a character outside its
+// approved set (#$%&*+@-=_(),<>':;?.,!/), so anything else becomes a space and
+// double quotes become apostrophes. Her words stay as she wrote them.
 function clean(value, max = 120) {
   return String(value ?? "")
+    .replace(/[\u201c\u201d\u201e\u201f"]/g, "'")
+    .replace(/[^\p{L}\p{N} #$%&*+@\-=_(),<>':;?.,!/]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
@@ -97,11 +102,11 @@ function buildMessage(payload = {}) {
     `Name: ${clean(name, 60) || "not given"}`,
     `Date: ${when || "not chosen"}`,
     `Plan: ${clean(plan, 100) || "not chosen"}`,
-    `"Not tonight" tries: ${tries}`,
+    `Not tonight tries: ${tries}`,
   ];
   const note = clean(letter, 260);
   if (note) lines.push(`Letter: ${note}`);
-  return lines.join("\n").slice(0, MAX_MESSAGE);
+  return lines.join(" - ").slice(0, MAX_MESSAGE);
 }
 
 function providerName(env) {
@@ -129,7 +134,8 @@ async function sendViaSmsMisr(env, to, message) {
     password: env.SMSMISR_PASSWORD,
     sender: env.SMSMISR_SENDER,
     mobile: to.replace(/^\+/, ""),
-    language: "1",
+    // 1 = English, 2 = Arabic, 3 = Unicode. Arabic answers need Unicode.
+    language: /[\u0600-\u06FF]/.test(message) ? "3" : "1",
     message,
   });
   try {
