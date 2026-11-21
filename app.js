@@ -2,7 +2,7 @@ import { buildLetterText, buildPersonalLetter, formatDate, formatTime, resolvePl
 
 // 1) Get a free access key at https://web3forms.com (enter your email, the key arrives in your inbox)
 // 2) Paste it below. Every answer will then be emailed to you.
-const NOTIFY_KEY = "PASTE_YOUR_WEB3FORMS_KEY_HERE";
+const NOTIFY_KEY = "400accf0-3ec1-42a1-aad6-a0654e4057d1";
 
 async function notify(subject, message) {
   if (!NOTIFY_KEY || NOTIFY_KEY.startsWith("PASTE")) return;
