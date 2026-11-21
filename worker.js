@@ -1,23 +1,23 @@
 /**
- * SMS relay for the date invitation.
+ * Private answer inbox for the date invitation.
  *
- * The page POSTs her finished answers to /api/notify and this Worker sends them
- * as a text message to your phone (01012712021 by default).
+ * The page POSTs her finished answers to /api/notify and this Worker stores them
+ * in D1. Nothing is texted or emailed from here.
  *
- * Gateway credentials are read from the environment, never from the page:
- *   SMS Misr (Egyptian gateway, best delivery to +20 numbers)
- *     SMSMISR_USERNAME, SMSMISR_PASSWORD, SMSMISR_SENDER
- *     SMSMISR_ENVIRONMENT  optional: 1 = live (default), 2 = test
- *   or Twilio
- *     TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM
+ * Only you can read them: open /inbox?key=<INBOX_KEY> where INBOX_KEY is a
+ * secret you set on the Worker. Without the right key every visit is a plain
+ * 404 - the route is not linked from the invitation page.
  *
- * Optional: SMS_TO (defaults to +201012712021), ALLOWED_ORIGINS (comma separated).
+ * Environment:
+ *   DB         D1 binding (required)
+ *   INBOX_KEY  secret key that unlocks /inbox (required)
+ *   ALLOWED_ORIGINS  optional, comma separated (defaults to the Pages site)
  */
 
-const DEFAULT_TO = "+201012712021";
 const MAX_MESSAGE = 600;
 const RATE_LIMIT = { max: 6, windowMs: 10 * 60 * 1000 };
 const hits = new Map();
+let schemaReady = false;
 
 export default {
   async fetch(request, env) {
@@ -30,11 +30,15 @@ export default {
     }
 
     if (url.pathname === "/" || url.pathname === "/health") {
-      return json({ ok: true, provider: providerName(env) }, 200, cors);
+      return json({ ok: true, storage: env.DB ? "d1" : "unavailable" }, 200, cors);
+    }
+
+    if (url.pathname === "/inbox") {
+      return inbox(request, env, url);
     }
 
     if (url.pathname !== "/api/notify") {
-      return json({ ok: false, error: "not found" }, 404, cors);
+      return notFound();
     }
     if (request.method !== "POST") {
       return json({ ok: false, error: "method not allowed" }, 405, cors);
@@ -58,10 +62,174 @@ export default {
       return json({ ok: false, error: "invalid json" }, 400, cors);
     }
 
-    const result = await sendSms(env, buildMessage(payload));
-    return json(result, result.ok ? 200 : 502, cors);
+    if (!env.DB) {
+      return json({ ok: false, error: "storage not configured" }, 502, cors);
+    }
+
+    try {
+      await ensureSchema(env);
+      const row = cleanPayload(payload);
+      const result = await env.DB.prepare(
+        "INSERT INTO answers (created_at, name, plan, plan_date, plan_time, attempts, letter) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          new Date().toISOString(),
+          row.name,
+          row.plan,
+          row.date,
+          row.time,
+          row.attempts,
+          row.letter,
+        )
+        .run();
+      return json({ ok: true, saved: true, id: result.meta?.last_row_id ?? null }, 200, cors);
+    } catch {
+      return json({ ok: false, error: "could not save the answers" }, 502, cors);
+    }
   },
 };
+
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS answers (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       created_at TEXT NOT NULL,
+       name TEXT,
+       plan TEXT,
+       plan_date TEXT,
+       plan_time TEXT,
+       attempts INTEGER,
+       letter TEXT
+     )`,
+  ).run();
+  schemaReady = true;
+}
+
+function cleanPayload(payload = {}) {
+  const { name, date, time, plan, attempts, letter } = payload;
+  const tries = Number.isFinite(Number(attempts)) ? Number(attempts) : 0;
+  return {
+    name: clean(name, 80),
+    date: clean(date, 40),
+    time: clean(time, 20),
+    plan: clean(plan, 160),
+    attempts: Math.max(0, Math.min(999, Math.trunc(tries))),
+    letter: clean(letter, MAX_MESSAGE),
+  };
+}
+
+async function inbox(request, env, url) {
+  if (!env.INBOX_KEY || url.searchParams.get("key") !== env.INBOX_KEY) {
+    return notFound();
+  }
+  if (!env.DB) {
+    return html("<p>Storage is not configured.</p>");
+  }
+  try {
+    await ensureSchema(env);
+    const remove = url.searchParams.get("delete");
+    if (remove) {
+      await env.DB.prepare("DELETE FROM answers WHERE id = ?").bind(Number(remove) || 0).run();
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location: `/inbox?key=${encodeURIComponent(env.INBOX_KEY)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    const { results } = await env.DB.prepare(
+      "SELECT id, created_at, name, plan, plan_date, plan_time, attempts, letter FROM answers ORDER BY id DESC LIMIT 200",
+    ).all();
+    return html(renderInbox(results || [], env.INBOX_KEY));
+  } catch {
+    return html("<p>Could not read the answers.</p>");
+  }
+}
+
+function renderInbox(rows, key) {
+  if (!rows.length) {
+    return "<p class='empty'>No answers yet.</p>";
+  }
+  const cards = rows
+    .map((row) => {
+      const when = [row.plan_date, row.plan_time].filter(Boolean).join(" at ");
+      return `<article>
+      <div class="meta"><span>${esc(row.created_at || "")}</span> <a class="del" href="?key=${encodeURIComponent(key)}&amp;delete=${Number(row.id) || 0}">delete</a></div>
+      <dl>
+        <dt>Name</dt><dd>${esc(row.name) || "-"}</dd>
+        <dt>Date</dt><dd>${esc(when) || "-"}</dd>
+        <dt>Plan</dt><dd>${esc(row.plan) || "-"}</dd>
+        <dt>Not tonight tries</dt><dd>${Number(row.attempts) || 0}</dd>
+        <dt>Letter</dt><dd>${esc(row.letter) || "-"}</dd>
+      </dl>
+    </article>`;
+    })
+    .join("\n");
+  return `<p class="count">${rows.length} answer${rows.length === 1 ? "" : "s"}</p>\n${cards}`;
+}
+
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function html(body) {
+  return new Response(
+    `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Inbox</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 24px; font: 16px/1.55 ui-sans-serif, system-ui, sans-serif; background: #0f0d13; color: #f2ecf5; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: .01em; margin: 0 0 4px; }
+  .count, .meta, .empty { color: #a79bb2; font-size: 13px; }
+  .count { margin: 0 0 20px; }
+  article { border: 1px solid #302a3a; border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; background: #171420; }
+  .meta { margin-bottom: 10px; display: flex; justify-content: space-between; gap: 12px; }
+  .del { color: #7d6f8a; text-decoration: none; }
+  .del:hover { color: #d98b8b; }
+  dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; margin: 0; }
+  dt { color: #a79bb2; font-size: 13px; }
+  dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  @media (max-width: 520px) { dl { grid-template-columns: 1fr; } dt { margin-top: 6px; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Her answers</h1>
+${body}
+</main>
+</body>
+</html>`,
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Referrer-Policy": "no-referrer",
+      },
+    },
+  );
+}
+
+function notFound() {
+  return new Response("Not found", {
+    status: 404,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
 
 function json(data, status, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -74,120 +242,12 @@ function json(data, status, headers = {}) {
   });
 }
 
-// SMS Misr rejects a whole message when it contains a character outside its
-// approved set (#$%&*+@-=_(),<>':;?.,!/), so anything else becomes a space and
-// double quotes become apostrophes. Her words stay as she wrote them.
 function clean(value, max = 120) {
   return String(value ?? "")
-    .replace(/[\u201c\u201d\u201e\u201f"]/g, "'")
-    .replace(/[^\p{L}\p{N} #$%&*+@\-=_(),<>':;?.,!/]/gu, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
-}
-
-function normalizeTo(raw) {
-  const digits = String(raw || "").replace(/\D/g, "");
-  if (digits.startsWith("20")) return `+${digits}`;
-  if (digits.startsWith("0")) return `+20${digits.slice(1)}`;
-  return `+${digits}`;
-}
-
-function buildMessage(payload = {}) {
-  const { name, date, time, plan, attempts, letter } = payload;
-  const tries = Number.isFinite(Number(attempts)) ? Number(attempts) : 0;
-  const when = [clean(date, 40), clean(time, 20)].filter(Boolean).join(" at ");
-  const lines = [
-    "Her answers to the date invitation:",
-    `Name: ${clean(name, 60) || "not given"}`,
-    `Date: ${when || "not chosen"}`,
-    `Plan: ${clean(plan, 100) || "not chosen"}`,
-    `Not tonight tries: ${tries}`,
-  ];
-  const note = clean(letter, 260);
-  if (note) lines.push(`Letter: ${note}`);
-  return lines.join(" - ").slice(0, MAX_MESSAGE);
-}
-
-function providerName(env) {
-  if (env.SMSMISR_USERNAME && env.SMSMISR_PASSWORD && env.SMSMISR_SENDER) return "smsmisr";
-  if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM) return "twilio";
-  return "none";
-}
-
-async function sendSms(env, message) {
-  const to = normalizeTo(env.SMS_TO || DEFAULT_TO);
-  switch (providerName(env)) {
-    case "smsmisr":
-      return sendViaSmsMisr(env, to, message);
-    case "twilio":
-      return sendViaTwilio(env, to, message);
-    default:
-      return { ok: false, error: "sms gateway not configured" };
-  }
-}
-
-async function sendViaSmsMisr(env, to, message) {
-  const body = new URLSearchParams({
-    environment: env.SMSMISR_ENVIRONMENT || "1",
-    username: env.SMSMISR_USERNAME,
-    password: env.SMSMISR_PASSWORD,
-    sender: env.SMSMISR_SENDER,
-    mobile: to.replace(/^\+/, ""),
-    // 1 = English, 2 = Arabic, 3 = Unicode. Arabic answers need Unicode.
-    language: /[\u0600-\u06FF]/.test(message) ? "3" : "1",
-    message,
-  });
-  try {
-    const response = await fetch("https://smsmisr.com/api/SMS/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-      body,
-    });
-    const data = await response.json().catch(() => ({}));
-    const code = String(data.code ?? "");
-    const ok = response.ok && ["1901", "6000"].includes(code);
-    if (!ok) {
-      return {
-        ok: false,
-        provider: "smsmisr",
-        error: clean(data.message, 200) || `gateway responded ${response.status}`,
-        code,
-      };
-    }
-    return { ok: true, provider: "smsmisr", smsId: data.SMSID ?? null };
-  } catch {
-    return { ok: false, provider: "smsmisr", error: "gateway unreachable" };
-  }
-}
-
-async function sendViaTwilio(env, to, message) {
-  const sid = env.TWILIO_ACCOUNT_SID;
-  try {
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${sid}:${env.TWILIO_AUTH_TOKEN}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: message }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return {
-        ok: false,
-        provider: "twilio",
-        error: clean(data.message, 200) || `gateway responded ${response.status}`,
-        code: data.code ?? null,
-      };
-    }
-    return { ok: true, provider: "twilio", smsId: data.sid ?? null };
-  } catch {
-    return { ok: false, provider: "twilio", error: "gateway unreachable" };
-  }
 }
 
 function defaultOrigins() {

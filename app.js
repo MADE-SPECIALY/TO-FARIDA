@@ -4,17 +4,17 @@ import { buildLetterText, buildPersonalLetter, formatDate, formatTime, resolvePl
 // 2) Paste it below. Every answer will then be emailed to you.
 const NOTIFY_KEY = "400accf0-3ec1-42a1-aad6-a0654e4057d1";
 
-// Where her finished answers get texted to your phone (01012712021).
+// Where her finished answers are kept, in your private inbox (see /inbox).
 // Leave empty when the page is served by worker.js; on GitHub Pages put the
-// deployed relay URL here, e.g. "https://to-farida-sms.your-name.workers.dev".
-const SMS_RELAY_URL = "https://to-farida-sms-relay-no3ony.freebuff.site";
-const SMS_ENDPOINT = SMS_RELAY_URL
-  ? `${SMS_RELAY_URL.replace(/\/+$/, "")}/api/notify`
+// deployed relay URL here, e.g. "https://to-farida-sms-relay-no3ony.freebuff.site".
+const ANSWERS_RELAY_URL = "https://to-farida-sms-relay-no3ony.freebuff.site";
+const ANSWERS_ENDPOINT = ANSWERS_RELAY_URL
+  ? `${ANSWERS_RELAY_URL.replace(/\/+$/, "")}/api/notify`
   : "/api/notify";
 
-async function textAnswers(payload) {
+async function saveAnswers(payload) {
   try {
-    const response = await fetch(SMS_ENDPOINT, {
+    const response = await fetch(ANSWERS_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -218,7 +218,7 @@ $("#planForm").addEventListener("submit", async (event) => {
   setStep(4);
   generateLetter(details);
   submitButton.disabled = false;
-  textAnswers({
+  saveAnswers({
     name: details.name,
     date: formatDate(details.date),
     time: formatTime(details.time),
